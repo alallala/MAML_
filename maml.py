@@ -21,46 +21,47 @@ class MAML:
         self.dim_output = dim_output
         self.update_lr = FLAGS.update_lr
         self.meta_lr = tf.placeholder_with_default(FLAGS.meta_lr, ())
-        self.classification = False
-        self.test_num_updates = test_num_updates
-        if FLAGS.datasource == 'sinusoid':
-            self.dim_hidden = [40, 40]
-            self.loss_func = mse
-            self.forward = self.forward_fc
-            self.construct_weights = self.construct_fc_weights
-        elif FLAGS.datasource == 'omniglot' or FLAGS.datasource == 'miniimagenet':
-            self.loss_func = xent
-            self.classification = True
-            if FLAGS.conv:
-                self.dim_hidden = FLAGS.num_filters
-                self.forward = self.forward_conv
-                self.construct_weights = self.construct_conv_weights
-            else:
-                self.dim_hidden = [256, 128, 64, 64]
-                self.forward=self.forward_fc
-                self.construct_weights = self.construct_fc_weights
-            if FLAGS.datasource == 'miniimagenet':
-                self.channels = 3
-            else:
-                self.channels = 1
-            self.img_size = int(np.sqrt(self.dim_input/self.channels))
+        self.test_num_updates = test_num_updates        
+        self.loss_func = xent
+        self.classification = True
+        
+        #if use convolutional filters
+        if FLAGS.conv:
+            self.dim_hidden = FLAGS.num_filters
+            self.forward = self.forward_conv
+            self.construct_weights = self.construct_conv_weights
         else:
-            raise ValueError('Unrecognized data source.')
-
+        # we use a network with 4 hidden layers with sizes 256, 128, 64, 64
+            self.dim_hidden = [256, 128, 64, 64]
+            self.forward=self.forward_fc
+            self.construct_weights = self.construct_fc_weights
+            
+        if FLAGS.datasource == 'miniimagenet':
+            self.channels = 3 #RGB scale images 
+        else:
+            self.channels = 1
+            
+        self.img_size = int(np.sqrt(self.dim_input/self.channels))
+        
     def construct_model(self, input_tensors=None, prefix='metatrain_'):
+        
         # a: training data for inner gradient, b: test data for meta gradient
+        
         if input_tensors is None:
+                
             self.inputa = tf.placeholder(tf.float32)
             self.inputb = tf.placeholder(tf.float32)
             self.labela = tf.placeholder(tf.float32)
             self.labelb = tf.placeholder(tf.float32)
         else:
-            self.inputa = input_tensors['inputa']
+            #these tensors will be provided by the function make_tensors() defined in data_generator.py 
+            self.inputa = input_tensors['inputa'] 
             self.inputb = input_tensors['inputb']
             self.labela = input_tensors['labela']
             self.labelb = input_tensors['labelb']
 
         with tf.variable_scope('model', reuse=None) as training_scope:
+            
             if 'weights' in dir(self):
                 training_scope.reuse_variables()
                 weights = self.weights
@@ -69,34 +70,48 @@ class MAML:
                 self.weights = weights = self.construct_weights()
 
             # outputbs[i] and lossesb[i] is the output and loss after i+1 gradient updates
-            lossesa, outputas, lossesb, outputbs = [], [], [], []
-            accuraciesa, accuraciesb = [], []
-            num_updates = max(self.test_num_updates, FLAGS.num_updates)
+            
+            lossesa, outputas, accuraciesa = [], [], [] #losses, outputs and accuracies during one-task inner training 
+            lossesb, outputbs, accuraciesb = [], [], [] #losses, output and accuracies during test phase, so during external meta-training 
+              
+            num_updates = max(self.test_num_updates, FLAGS.num_updates) #number of gradient descend steps 
+                                                                        #test_num_updates is for meta training, num_updates is for task training 
+                        
+            #usually few-shot learning is such that the number of inner gradient descend steps is just 1
+            #instead the number of meta gradient descend steps is bigger
+            
             outputbs = [[]]*num_updates
             lossesb = [[]]*num_updates
             accuraciesb = [[]]*num_updates
 
             def task_metalearn(inp, reuse=True):
+                        
                 """ Perform gradient descent for one task in the meta-batch. """
-                inputa, inputb, labela, labelb = inp
-                task_outputbs, task_lossesb = [], []
-
+                
+                inputa, inputb, labela, labelb = inp #inner training images with labels, external training images ("evaluation") with labels
+                task_outputbs, task_lossesb = [], [] 
+                
                 if self.classification:
                     task_accuraciesb = []
 
                 task_outputa = self.forward(inputa, weights, reuse=reuse)  # only reuse on the first iter
-                task_lossa = self.loss_func(task_outputa, labela)
+                task_lossa = self.loss_func(task_outputa, labela) #compute cross-entropy loss
 
                 grads = tf.gradients(task_lossa, list(weights.values()))
+                
                 if FLAGS.stop_grad:
                     grads = [tf.stop_gradient(grad) for grad in grads]
-                gradients = dict(zip(weights.keys(), grads))
-                fast_weights = dict(zip(weights.keys(), [weights[key] - self.update_lr*gradients[key] for key in weights.keys()]))
-                output = self.forward(inputb, fast_weights, reuse=True)
-                task_outputbs.append(output)
-                task_lossesb.append(self.loss_func(output, labelb))
+                
+                gradients = dict(zip(weights.keys(), grads)) #loss gradients w.r.t to the weights of the model 
+                fast_weights = dict(zip(weights.keys(), [weights[key] - self.update_lr*gradients[key] for key in weights.keys()])) #updated weights
+                
+                output = self.forward(inputb, fast_weights, reuse=True) #forward the evaluation data with updated weights
+                task_outputbs.append(output) #collect task outputs 
+                task_lossesb.append(self.loss_func(output, labelb)) #collect task losses
 
-                for j in range(num_updates - 1):
+                '''inner gradient descend steps for inner task training'''' 
+                #in 1-shot the following piece of code should not be executed 
+                for j in range(num_updates - 1):  #it should be FLAG.num_updates ????????????? 
                     loss = self.loss_func(self.forward(inputa, fast_weights, reuse=True), labela)
                     grads = tf.gradients(loss, list(fast_weights.values()))
                     if FLAGS.stop_grad:
@@ -111,43 +126,59 @@ class MAML:
 
                 if self.classification:
                     task_accuracya = tf.contrib.metrics.accuracy(tf.argmax(tf.nn.softmax(task_outputa), 1), tf.argmax(labela, 1))
+                
                     for j in range(num_updates):
                         task_accuraciesb.append(tf.contrib.metrics.accuracy(tf.argmax(tf.nn.softmax(task_outputbs[j]), 1), tf.argmax(labelb, 1)))
                     task_output.extend([task_accuracya, task_accuraciesb])
 
-                return task_output
+                return task_output #extend the task_output with the accuracy on training images and evaluation images
+        
+           #end of task_metalearn function 
 
             if FLAGS.norm is not 'None':
-                # to initialize the batch norm vars, might want to combine this, and not run idx 0 twice.
-                unused = task_metalearn((self.inputa[0], self.inputb[0], self.labela[0], self.labelb[0]), False)
+                # to initialize the batch norm vars, might want to combine this, and not run idx 0 twice.   #????????????? 
+                unused = task_metalearn((self.inputa[0], self.inputb[0], self.labela[0], self.labelb[0]), False)  
 
-            out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, [tf.float32]*num_updates]
+            out_dtype = [tf.float32, [tf.float32]*num_updates, tf.float32, [tf.float32]*num_updates] #create a list of tensors or right shape to store results
+        
             if self.classification:
-                out_dtype.extend([tf.float32, [tf.float32]*num_updates])
-            result = tf.map_fn(task_metalearn, elems=(self.inputa, self.inputb, self.labela, self.labelb), dtype=out_dtype, parallel_iterations=FLAGS.meta_batch_size)
+                out_dtype.extend([tf.float32, [tf.float32]*num_updates]) #add information about accuracy  
+                
+            """here we perform the task meta learning""" 
+            result = tf.map_fn(task_metalearn, elems=(self.inputa, self.inputb, self.labela, self.labelb), dtype=out_dtype, parallel_iterations=FLAGS.meta_batch_size) 
+        
             if self.classification:
+               #store the new results 
                 outputas, outputbs, lossesa, lossesb, accuraciesa, accuraciesb = result
             else:
                 outputas, outputbs, lossesa, lossesb  = result
 
         ## Performance & Optimization
         if 'train' in prefix:
-            self.total_loss1 = total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(FLAGS.meta_batch_size)
-            self.total_losses2 = total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(FLAGS.meta_batch_size) for j in range(num_updates)]
+            self.total_loss1 = total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(FLAGS.meta_batch_size) #average training tasks loss 
+            
+            self.total_losses2 = total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(FLAGS.meta_batch_size) for j in range(num_updates)]  #average evaluation tasks losses
+                                                                                                                                               #after each gradient steps
             # after the map_fn
             self.outputas, self.outputbs = outputas, outputbs
             if self.classification:
-                self.total_accuracy1 = total_accuracy1 = tf.reduce_sum(accuraciesa) / tf.to_float(FLAGS.meta_batch_size)
-                self.total_accuracies2 = total_accuracies2 = [tf.reduce_sum(accuraciesb[j]) / tf.to_float(FLAGS.meta_batch_size) for j in range(num_updates)]
+                self.total_accuracy1 = total_accuracy1 = tf.reduce_sum(accuraciesa) / tf.to_float(FLAGS.meta_batch_size) #average training tasks accuracy 
+                self.total_accuracies2 = total_accuracies2 = [tf.reduce_sum(accuraciesb[j]) / tf.to_float(FLAGS.meta_batch_size) for j in range(num_updates)] #average evaluation tasks accuracy
+                                                                                                                                                              #after each gradient step
+            """parameters optimization"""     
+        
             self.pretrain_op = tf.train.AdamOptimizer(self.meta_lr).minimize(total_loss1)
-
-            if FLAGS.metatrain_iterations > 0:
+            if FLAGS.metatrain_iterations > 0
+        
+               #optimize meta parameters
                 optimizer = tf.train.AdamOptimizer(self.meta_lr)
-                self.gvs = gvs = optimizer.compute_gradients(self.total_losses2[FLAGS.num_updates-1])
+                self.gvs = gvs = optimizer.compute_gradients(self.total_losses2[FLAGS.num_updates-1]) #here we use the losses obtained at meta test time to optimize 
                 if FLAGS.datasource == 'miniimagenet':
                     gvs = [(tf.clip_by_value(grad, -10, 10), var) for grad, var in gvs]
                 self.metatrain_op = optimizer.apply_gradients(gvs)
         else:
+            """evaluate the model on validation data"""  
+        
             self.metaval_total_loss1 = total_loss1 = tf.reduce_sum(lossesa) / tf.to_float(FLAGS.meta_batch_size)
             self.metaval_total_losses2 = total_losses2 = [tf.reduce_sum(lossesb[j]) / tf.to_float(FLAGS.meta_batch_size) for j in range(num_updates)]
             if self.classification:
