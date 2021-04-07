@@ -76,7 +76,9 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
 
     for itr in range(resume_itr, FLAGS.pretrain_iterations + FLAGS.metatrain_iterations):
         feed_dict = {}
-        if 'generate' in dir(data_generator):
+         
+        if 'generate' in dir(data_generator): 
+            print("in generate") 
             batch_x, batch_y, amp, phase = data_generator.generate()
 
             if FLAGS.baseline == 'oracle':
@@ -90,32 +92,35 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
             inputb = batch_x[:, num_classes*FLAGS.update_batch_size:, :] # b used for testing
             labelb = batch_y[:, num_classes*FLAGS.update_batch_size:, :]
             feed_dict = {model.inputa: inputa, model.inputb: inputb,  model.labela: labela, model.labelb: labelb}
-
+        
         if itr < FLAGS.pretrain_iterations:
-            input_tensors = [model.pretrain_op]
+            input_tensors = [model.pretrain_op] #model.pretrain_op = operation that updates variables w.r.t. inner task loss
         else:
-            input_tensors = [model.metatrain_op]
+            input_tensors = [model.metatrain_op] #model.metatrain_op = operation that updates variables w.r.t. meta test loss 
 
         if (itr % SUMMARY_INTERVAL == 0 or itr % PRINT_INTERVAL == 0):
             input_tensors.extend([model.summ_op, model.total_loss1, model.total_losses2[FLAGS.num_updates-1]])
             if model.classification:
                 input_tensors.extend([model.total_accuracy1, model.total_accuracies2[FLAGS.num_updates-1]])
 
-        result = sess.run(input_tensors, feed_dict)
-
+        result = sess.run(input_tensors, feed_dict)   #run meta-train iteration
+        #result has same dimension as input_tensors
+        
         if itr % SUMMARY_INTERVAL == 0:
-            prelosses.append(result[-2])
+            prelosses.append(result[-2])   #losses at tasks training time if NOT CLASSIFICATION, otherwise results[-2] is task accuracy
             if FLAGS.log:
                 train_writer.add_summary(result[1], itr)
-            postlosses.append(result[-1])
+            postlosses.append(result[-1]) #losses at meta test time  if NOT CLASSIFICATION, otherwise results[-1] is meta test accuracy
 
         if (itr!=0) and itr % PRINT_INTERVAL == 0:
             if itr < FLAGS.pretrain_iterations:
                 print_str = 'Pretrain Iteration ' + str(itr)
             else:
                 print_str = 'Iteration ' + str(itr - FLAGS.pretrain_iterations)
-            print_str += ': ' + str(np.mean(prelosses)) + ', ' + str(np.mean(postlosses))
+                
+            print_str += ': ' + str(np.mean(prelosses)) + ', ' + str(np.mean(postlosses)
             print(print_str)
+                                                                                                                                                                    
             prelosses, postlosses = [], []
 
         if (itr!=0) and itr % SAVE_INTERVAL == 0:
@@ -142,7 +147,8 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
                     input_tensors = [model.total_loss1, model.total_losses2[FLAGS.num_updates-1]]
 
             result = sess.run(input_tensors, feed_dict)
-            print('Validation results: ' + str(result[0]) + ', ' + str(result[1]))
+            #result has same dimension as input_sensor
+            print('Validation results: ' + str(result[0]) + ', ' + str(result[1])) #if classification result[0] is task accuracy and result[1] is meta accuracy
 
     saver.save(sess, FLAGS.logdir + '/' + exp_string +  '/model' + str(itr))
 
@@ -150,7 +156,7 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
 NUM_TEST_POINTS = 600
 
 def test(model, saver, sess, exp_string, data_generator, test_num_updates=None):
-    num_classes = data_generator.num_classes # for classification, 1 otherwise
+    num_classes = data_generator.num_classes 
 
     np.random.seed(1)
     random.seed(1)
