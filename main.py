@@ -1,11 +1,5 @@
 """
 Usage Instructions:
-    10-shot sinusoid:
-        python main.py --datasource=sinusoid --logdir=logs/sine/ --metatrain_iterations=70000 --norm=None --update_batch_size=10
-
-    10-shot sinusoid baselines:
-        python main.py --datasource=sinusoid --logdir=logs/sine/ --pretrain_iterations=70000 --metatrain_iterations=0 --norm=None --update_batch_size=10 --baseline=oracle
-        python main.py --datasource=sinusoid --logdir=logs/sine/ --pretrain_iterations=70000 --metatrain_iterations=0 --norm=None --update_batch_size=10
 
     5-way, 1-shot omniglot:
         python main.py --datasource=omniglot --metatrain_iterations=60000 --meta_batch_size=32 --update_batch_size=1 --update_lr=0.4 --num_updates=1 --logdir=logs/omniglot5way/
@@ -23,7 +17,6 @@ Usage Instructions:
 
     For omniglot and miniimagenet training, acquire the dataset online, put it in the correspoding data directory, and see the python script instructions in that directory to preprocess the data.
 
-    Note that better sinusoid results can be achieved by using a larger network.
 """
 import csv
 import numpy as np
@@ -40,12 +33,10 @@ FLAGS = flags.FLAGS
 ## Dataset/method options
 flags.DEFINE_string('datasource', 'sinusoid', 'sinusoid or omniglot or miniimagenet')
 flags.DEFINE_integer('num_classes', 5, 'number of classes used in classification (e.g. 5-way classification).')
-# oracle means task id is input (only suitable for sinusoid)
-flags.DEFINE_string('baseline', None, 'oracle, or None')
 
 ## Training options
 flags.DEFINE_integer('pretrain_iterations', 0, 'number of pre-training iterations.')
-flags.DEFINE_integer('metatrain_iterations', 15000, 'number of metatraining iterations.') # 15k for omniglot, 50k for sinusoid
+flags.DEFINE_integer('metatrain_iterations', 15000, 'number of metatraining iterations.') # 15k for omniglot
 flags.DEFINE_integer('meta_batch_size', 25, 'number of tasks sampled per meta-update')
 flags.DEFINE_float('meta_lr', 0.001, 'the base learning rate of the generator')
 flags.DEFINE_integer('update_batch_size', 5, 'number of examples used for inner gradient update (K for K-shot learning).')
@@ -71,20 +62,16 @@ flags.DEFINE_float('train_update_lr', -1, 'value of inner gradient step step dur
 
 def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
     SUMMARY_INTERVAL = 100
-    SAVE_INTERVAL = 1000
-    if FLAGS.datasource == 'sinusoid':
-        PRINT_INTERVAL = 1000
-        TEST_PRINT_INTERVAL = PRINT_INTERVAL*5
-    else:
-        PRINT_INTERVAL = 100
-        TEST_PRINT_INTERVAL = PRINT_INTERVAL*5
+    SAVE_INTERVAL = 100
+    PRINT_INTERVAL = 100
+    TEST_PRINT_INTERVAL = PRINT_INTERVAL*5
 
     if FLAGS.log:
         train_writer = tf.summary.FileWriter(FLAGS.logdir + '/' + exp_string, sess.graph)
     print('Done initializing, starting training.')
     prelosses, postlosses = [], []
 
-    num_classes = data_generator.num_classes # for classification, 1 otherwise
+    num_classes = data_generator.num_classes 
     multitask_weights, reg_weights = [], []
 
     for itr in range(resume_itr, FLAGS.pretrain_iterations + FLAGS.metatrain_iterations):
