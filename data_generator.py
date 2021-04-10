@@ -24,7 +24,7 @@ class DataGenerator(object):
         self.num_samples_per_class = num_samples_per_class #in 1-shot we have just one image per class, in 5 shot we have 5 images per class and so on 
         self.num_classes = 1  # by default 1 (only relevant for classification problems)
         
-    if FLAGS.datasource == 'sinusoid':
+        if FLAGS.datasource == 'sinusoid':
             self.generate = self.generate_sinusoid_batch
             self.amp_range = config.get('amp_range', [0.1, 5.0])
             self.phase_range = config.get('phase_range', [0, np.pi])
