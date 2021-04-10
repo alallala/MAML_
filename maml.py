@@ -186,7 +186,7 @@ class MAML:
         
             self.pretrain_op = tf.train.AdamOptimizer(self.meta_lr).minimize(total_loss1) #update weights w.r.t training task loss
             
-            if FLAGS.metatrain_iterations > 0
+            if FLAGS.metatrain_iterations > 0:
                 #optimize meta parameters
                 optimizer = tf.train.AdamOptimizer(self.meta_lr)
                 self.gvs = gvs = optimizer.compute_gradients(self.total_losses2[FLAGS.num_updates-1]) #here we use the losses obtained at meta test time to optimize 
