@@ -120,7 +120,7 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
             else:
                 print_str = 'Iteration ' + str(itr - FLAGS.pretrain_iterations)
                 
-            print_str += ': ' + str(np.mean(prelosses)) + ', ' + str(np.mean(postlosses)
+            print_str += ': ' + str(np.mean(prelosses)) + ', ' + str(np.mean(postlosses))
             print(print_str)
                                                                                                                                                                     
             prelosses, postlosses = [], []
