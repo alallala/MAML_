@@ -24,14 +24,14 @@ class DataGenerator(object):
         self.num_samples_per_class = num_samples_per_class #in 1-shot we have just one image per class, in 5 shot we have 5 images per class and so on 
         self.num_classes = 1  # by default 1 (only relevant for classification problems)
         
-	if FLAGS.datasource == 'sinusoid':
+    if FLAGS.datasource == 'sinusoid':
             self.generate = self.generate_sinusoid_batch
             self.amp_range = config.get('amp_range', [0.1, 5.0])
             self.phase_range = config.get('phase_range', [0, np.pi])
             self.input_range = config.get('input_range', [-5.0, 5.0])
             self.dim_input = 1
             self.dim_output = 1
-		
+        
         elif 'omniglot' in FLAGS.datasource:
             self.num_classes = config.get('num_classes', FLAGS.num_classes)
             self.img_size = config.get('img_size', (28, 28))
@@ -118,7 +118,7 @@ class DataGenerator(object):
         print('Generating filenames')
         
         # for miniimagent : 16 images in one class, 16*5 in one task
-		# [task1_0_img0, task1_0_img15, task1_1_img0,]
+        # [task1_0_img0, task1_0_img15, task1_1_img0,]
        
         all_filenames = []
         
@@ -128,7 +128,7 @@ class DataGenerator(object):
             random.shuffle(sampled_character_folders)
             
             # sample 16 images from selected folders, and each with label 0-4, (0/1..., path), orderly, no shuffle!
-			# len: 5 * 16
+            # len: 5 * 16
             labels_and_images = get_images(sampled_character_folders, range(self.num_classes), nb_samples=self.num_samples_per_class, shuffle=False)
             # make sure the above isn't randomized order
             labels = [li[0] for li in labels_and_images]
