@@ -261,8 +261,10 @@ def main():
 
         if FLAGS.train: # only construct training model if needed
             random.seed(5)
-            image_tensor, label_tensor = data_generator.make_data_tensor()
-            inputa = tf.slice(image_tensor, [0,0,0], [-1,num_classes*FLAGS.update_batch_size, -1])
+            image_tensor, label_tensor = data_generator.make_data_tensor() #creates image tensors and label tensors for all training tasks
+            
+            #the following split each task's dataset in training images and test images
+            inputa = tf.slice(image_tensor, [0,0,0], [-1,num_classes*FLAGS.update_batch_size, -1]) 
             inputb = tf.slice(image_tensor, [0,num_classes*FLAGS.update_batch_size, 0], [-1,-1,-1])
             labela = tf.slice(label_tensor, [0,0,0], [-1,num_classes*FLAGS.update_batch_size, -1])
             labelb = tf.slice(label_tensor, [0,num_classes*FLAGS.update_batch_size, 0], [-1,-1,-1])
