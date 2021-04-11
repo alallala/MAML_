@@ -33,8 +33,6 @@ FLAGS = flags.FLAGS
 ## Dataset/method options
 flags.DEFINE_string('datasource', 'sinusoid', 'sinusoid or omniglot or miniimagenet')
 flags.DEFINE_integer('num_classes', 5, 'number of classes used in classification (e.g. 5-way classification).')
-# oracle means task id is input (only suitable for sinusoid)
-flags.DEFINE_string('baseline', None, 'oracle, or None')
 
 ## Training options
 flags.DEFINE_integer('pretrain_iterations', 0, 'number of pre-training iterations.')
@@ -44,6 +42,12 @@ flags.DEFINE_float('meta_lr', 0.001, 'the base learning rate of the generator')
 flags.DEFINE_integer('update_batch_size', 5, 'number of examples used for inner gradient update (K for K-shot learning).')
 flags.DEFINE_float('update_lr', 1e-3, 'step size alpha for inner gradient update.') # 0.1 for omniglot
 flags.DEFINE_integer('num_updates', 1, 'number of inner gradient updates during training.')
+flags.DEFINE_integer('test_num_updates',1,'number of updates at meta test or final test time') 
+
+#suggestion for test_num_updates:
+#for miniimagenet -> eval on just one update during training (set to 1) and on 10 during test (set to 10) 
+#for omniglot -> set to 10 for both 
+#for sinusoid -> seto to 5 for training and to 10 for testing 
 
 ## Model options
 flags.DEFINE_string('norm', 'batch_norm', 'batch_norm, layer_norm, or None')
@@ -62,11 +66,21 @@ flags.DEFINE_bool('test_set', False, 'Set to true to test on the the test set, F
 flags.DEFINE_integer('train_update_batch_size', -1, 'number of examples used for gradient update during training (use if you want to test with a different number).')
 flags.DEFINE_float('train_update_lr', -1, 'value of inner gradient step step during training. (use if you want to test with a different value)') # 0.1 for omniglot
 
+## Workflow monitoring options
+flags.DEFINE_integer('summ_interval',100,'metatrain iterations for summary')
+flags.DEFINE_integer('save_interval',100,'metatrain iterations for model saving')
+flags.DEFINE_integer('print_interval',100,'metatrain iterations for print training results')
+flags.DEFINE_integer('test_print_interval',100*5,'metatrain iterations for evaluate model and print results')
+
+## final test options
+flags.DEFINE_integer('num_test_points',600,'number of points to test') #calculated for omniglot (miniimangent has its own test dataset)
+
 def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
-    SUMMARY_INTERVAL = 100
-    SAVE_INTERVAL = 100
-    PRINT_INTERVAL = 100
-    TEST_PRINT_INTERVAL = PRINT_INTERVAL*5
+
+    SUMMARY_INTERVAL = FLAGS.summ_interval
+    SAVE_INTERVAL = FLAGS.save_interval
+    PRINT_INTERVAL = FLAGS.print_interval
+    TEST_PRINT_INTERVAL = FLAGS.test_print_interval
 
     if FLAGS.log:
         train_writer = tf.summary.FileWriter(FLAGS.logdir + '/' + exp_string, sess.graph)
@@ -155,7 +169,7 @@ def train(model, saver, sess, exp_string, data_generator, resume_itr=0):
     saver.save(sess, FLAGS.logdir + '/' + exp_string +  '/model' + str(itr))
 
 # calculated for omniglot
-NUM_TEST_POINTS = 600
+NUM_TEST_POINTS = FLAGS.num_test_points
 
 def test(model, saver, sess, exp_string, data_generator, test_num_updates=None):
     num_classes = data_generator.num_classes 
@@ -210,19 +224,8 @@ def test(model, saver, sess, exp_string, data_generator, test_num_updates=None):
         writer.writerow(ci95)
 
 def main():
-    if FLAGS.datasource == 'sinusoid':
-        if FLAGS.train:
-            test_num_updates = 5
-        else:
-            test_num_updates = 10
-    else:
-        if FLAGS.datasource == 'miniimagenet':
-            if FLAGS.train == True:
-                test_num_updates = 1  # eval on at least one update during training
-            else:
-                test_num_updates = 10
-        else:
-            test_num_updates = 10
+
+    test_num_updates = FLAGS.test_num_updates #set to 1 for training!
 
     if FLAGS.train == False:
         orig_meta_batch_size = FLAGS.meta_batch_size
@@ -261,10 +264,8 @@ def main():
 
         if FLAGS.train: # only construct training model if needed
             random.seed(5)
-            image_tensor, label_tensor = data_generator.make_data_tensor() #creates image tensors and label tensors for all training tasks
-            
-            #the following split each task's dataset in training images and test images
-            inputa = tf.slice(image_tensor, [0,0,0], [-1,num_classes*FLAGS.update_batch_size, -1]) 
+            image_tensor, label_tensor = data_generator.make_data_tensor()
+            inputa = tf.slice(image_tensor, [0,0,0], [-1,num_classes*FLAGS.update_batch_size, -1])
             inputb = tf.slice(image_tensor, [0,num_classes*FLAGS.update_batch_size, 0], [-1,-1,-1])
             labela = tf.slice(label_tensor, [0,0,0], [-1,num_classes*FLAGS.update_batch_size, -1])
             labelb = tf.slice(label_tensor, [0,num_classes*FLAGS.update_batch_size, 0], [-1,-1,-1])
@@ -342,4 +343,4 @@ def main():
         test(model, saver, sess, exp_string, data_generator, test_num_updates)
 
 if __name__ == "__main__":
-    main()
+    main(FLAGS)
