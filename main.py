@@ -33,6 +33,7 @@ FLAGS = flags.FLAGS
 ## Dataset/method options
 flags.DEFINE_string('datasource', 'sinusoid', 'sinusoid or omniglot or miniimagenet')
 flags.DEFINE_integer('num_classes', 5, 'number of classes used in classification (e.g. 5-way classification).')
+flags.DEFINE_string('baseline', None, 'oracle, or None')
 
 ## Training options
 flags.DEFINE_integer('pretrain_iterations', 0, 'number of pre-training iterations.')
@@ -343,4 +344,4 @@ def main():
         test(model, saver, sess, exp_string, data_generator, test_num_updates)
 
 if __name__ == "__main__":
-    main(FLAGS)
+    main()
